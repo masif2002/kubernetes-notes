@@ -94,3 +94,117 @@ spec:
             image: nginx
 ```
 * Use `kubectl create -f <yamlfile>` or `kubectl apply -f <yamlfile>` command to create the pod
+
+## ReplicaController & ReplicaSet
+* **Replica Controller** is used to monitor the pods. Incase any of the pods fail, RC creates a new pod
+![](img/rc.png)
+* It is also used to load balance among the pods
+* A single RC can span across multiple nodes in the cluster
+
+![](img/rc-def.png)
+* The `template` section is to specify the template of the pod that the RC needs to launch
+    * If the pods are already present (with matching labels), then no new pods will be created. But, if any of the pods fail, the new pods are launch from the mentioned `template` 
+> Replicas = Pods   
+### Replica Set
+![](img/rs-def.png)
+* **Replica Set** is just the newer version of _Replica Controller_ with minor differences
+* The actual major difference in replica set is that you need to specify the `selectors` in the definition file. This actually is used to monitor pods that were already created with the same label.
+* The label specified in the `selectors` section and the `template` of the pod must be the same.   
+* You can use the `selectors` property in Replica Controller aswell but if you skip it, it by default takes the label of the pod you mentioned in the `template`
+* It is recommendeed to use Replica Set than Replica Controller as it is old 
+![](img/rs-mon.png)
+> Deleting a replicaset also deletes the pods managed by it
+### Scaling
+* You can scale to match the workload by replacing the `replicas` field with the desire number in your definition file and using the `kubectl replace -f replicaset-def.yaml` command. OR with the `scale` command
+```
+kubectl scale --replicas=6 -f replicaset-def.yaml
+OR
+kubectl scale --replicas=6 replicaset myapp-replicaset
+```
+* Scales replicas to 6, but does not change the actual definition in the file
+* `myapp-replicaset` is the name of the replicaset you define in your definition file
+
+## Deployments
+![](img/deployment.png)
+* Deployment automatically creates a replica set
+![](img/dep-def.png)
+* The definition file for deployment is similar to that of a replica set except for the `kind` field
+* The `template` is for the template of the pod 
+* `selector` here is the selector for the replica set. If you create another RS with the same label it won't create new pods
+> selector groups k8 objects based on matching labels
+
+### Update and Rollback 
+* _Rollout_ is something that is carried out on every deployment. It basically creates a new revision of the deployment
+> Deployment in a versioned manner is called a rollout. It is Rollout history is like your commit history in git
+* You can check the rollout status of your deployment using `kubectl rollout status deployment/myapp-deployment` and rollout history using `kubectl rollout history deployment/myapp-deployment`
+___
+* During a new deployment, a new replicaset is created and the pods managed by the old replicaset is shut down. 
+* The old replicaset still remains, and is used incase if you want to rollback to a previous version
+
+### Deployment Strategy
+![](img/depl-strat.png)
+* In **Recreate** deployment strategy, all the instances of the application is brought down and the new version of the application is launched altogether
+* The downside of _Recreate_ deployment strategy is application downtime 
+* In **Rolling Update** strategy, the older version of the application is stopped instance by instance while the new version is launched simultaneously (instance by instance)
+* Rolling Update is the default deployment strat in k8
+### Deployment vs ReplicaSet
+* Deployment has extra features like update and rollback
+* Deployment internally uses replicasets
+## Networking in Kubernetes
+* Every node has an IP address
+* In Kuberenetes, IP address is assgined to a pod (not the container)
+* Pods within a node can communicate with each other using their IP
+* Pods are assigned a new IP when they are recreated
+* Kubernetes does not set up networking by default in a multi-node cluster. It expects us to do so that meets this criteria:
+    * All containers/PODs can communicate to one another without NAT
+    * All nodes can communicate with all containers and without NAT
+* There are many additional 3rd party applications available that can help you to set up networking in k8
+<br/>
+![](img/networking.png)
+* Here, the node is running on the same machine as the user. So they have similar IP addresses 
+* But the pods inside the node are on a different network. So they have different IP addresses
+
+## Services in Kubernetes
+* Services in Kubernetes allows communication with components outside the application
+    * Could be with applications outside k8 (OR) maybe with application that runs on a node part of a different cluster
+![](img/services.png) 
+
+* Three types of Services:
+    * NodePort
+    * ClusterIP
+    * Load Balancer
+> ClusterIP is the default type of service 
+### NodePort
+* It listens to a port on a node and forwards the requests to pods in that node
+* The port that it listens on the node is called a **node port**. The port on the Service is called port. The port on the pod is called target port
+![](img/nodeport.png)
+* NodePort can only be in the range 30000-32767
+
+![](img/nodeport-def.png)
+* It chooses the pods to forward requests to, by the `selector` property in the definition file
+* So when there are multiple pods with the same label, the Service forwards requests to multiple pods
+> Note here that there is no `matchLabels` under `selector` field 
+<br/>
+* The only required parameter in the `ports` section is `port`
+    * If nodePort is not specified, a free port is assigned from the range
+    * If targetPort is not specified, it is assumed to be the `port` (port on the Service) 
+<br/>
+* In a multi-node cluster, the **service** automatically spans across all the nodes without any additional setup
+
+![](img/multi-node-service.png)
+* In this example, the application _voting-app_ is accessible across all the four nodes with NodePort because, the k8 Service by default spans across all the nodes 
+
+### ClusterIP
+* The IPs on the pods are not static. If a pod fails, a new pod is launched with a new IP
+* So, to have common IP for communication for a set of pods, we create a **ClusterIP**
+* ClusterIP is an interface that is the gateway to communicate with a set of pods
+![](img/clusterip.png)
+
+![](img/cip-def.png)
+* Other pods can communicate using the Cluster IP _or_ the service name
+
+### LoadBalancer
+* The `LoadBalancer` service actually leverages the native load balancer of the cloud (only supported providers like AWS, GCP, Azure ...)
+* If you are setting up a seperate server for external load balancing, the k8 `LoadBalancer` service would not have any effect. It will just act as a NodePort Service
+
+![](img/lb.png)
