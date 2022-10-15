@@ -104,10 +104,14 @@ kubectl apply -f <definition_file>
 * Apply new changes to the resource
 ___
 ```
+kubectl logs <pod_name>
 ```
+* Displays the logs of the application container runnong inside the pod
 ___
 ```
+kubectl exec -it <pod_name> -- /bin/bash 
 ```
+* Terminal inside the container
 ___
 ```
 ```
