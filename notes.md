@@ -98,15 +98,30 @@ ___
 ![](img/secret-ref.png)
 * This is how the secret is referenced in other config files
 * `mongodb-secret` is the name of the secret (k8 component) that was created. It can contain multiple secrets. One of those secret is `mongodb-root-username`
-### Volumes
+
+## Volumes
 * K8s does not manage data persistency by default. When the pods go down, the data aswell goes down. So, we use Volumes. It can be visualized as an external hardware plugged into the K8s cluster
 * The volume could be a local storage on a node or external storage (maybe in the cloud)
+### Persistent Volumes
+* Lives golablly across the cluster
+* It is actual physical storage - local storage, or NFS server or Cloud storage (EBS)
+* Persistent Volume is a K8s component that is actually an interface to your actual storage
+![](img/pv.png)
 
-### StatefulSet
-* You use deployment to deploy stateless application and use **Stateful set** to deploy stateful applications like database
-* You cannot replicate a DB using deployment because, if there are multiple replicas of DBs, then they must be in sync. Stateful Set takes care of this
-* But, setting up DBs with statefulSet is tedious, so usually DBs are usually maintained outside of the K8s cluster 
+### Persistent Volume Claim
+* The one who sets ups the K8s cluster (usually, the K8s administrator) should provision these PVs for the pods to use them
+* The developers who deploy the application should make use of something called _Persistent Volume Claim_ to claim the volume needed for the application from the pool of Persistent Volumes that the administartor has provisioned
+![](img/pvc.png)
+* After you claim the PV, you can reference the PVC in your Pods config file to use the volume
+> Claims must exist in the same namespace as the pod using it
+___
+* ConfigMap and Secrets are also treated as local volumes. They can also be mounted to pods
+* One pod can have multiple types of volumes attached to it
 
+### Storage Class
+* When a developer is deploying an application, everytime he has to ask the administrator to deploy PVs for him. To eliminate this, we use Storage Class
+* **Storage Class** is a K8s component that automatically provisions PVs when a claim is requested (PVC)
+![](img/sc.png)
 ## Namespaces
 * Namespaces are like venvs within a k8s cluster
 * There are 4 namespaces created by k8s by default and one by minikube aswell
@@ -235,6 +250,7 @@ ___
 ### Deployment vs ReplicaSet
 * Deployment has extra features like update and rollback
 * Deployment internally uses replicasets
+
 ## Networking in Kubernetes
 * Every node has an IP address
 * In Kuberenetes, IP address is assgined to a pod (not the container)
@@ -248,6 +264,24 @@ ___
 ![](img/networking.png)
 * Here, the node is running on the same machine as the user. So they have similar IP addresses 
 * But the pods inside the node are on a different network (virtual network). So they have different IP addresses
+
+## StatefulSet
+* You use _deployment_ to deploy stateless application and use **Stateful set** to deploy stateful applications like database
+* You cannot replicate a DB using deployment because, if there are multiple replicas of DBs, then they must be in sync. Stateful Set takes care of this
+* But, setting up DBs with statefulSet is tedious, so usually DBs are usually maintained outside of the K8s cluster 
+<br/>
+
+* In a stateful set, only the first replica is allowed to read and write. The other replicas can only read from the storage. If multiple pods read and write, it will lead to data inconsistency
+![](img/ss.png)
+* All pods do not have access to the same physical storage. Every worker has their own seperate replica
+![](img/seprep.png) 
+* After the master updates anything to the storage, the workers synchronize with their master
+* If a new pod is created in a Stateful Set, it first replicates the storage of the most recent pod and then synchronizes with the master
+* Since the data is replicated among the worker pods, it is theoretically possible to use a not so reliable storage like local storage. Because if one pod dies, the data is replicated from the storage of the previous pod. But if the entire cluster crashes, all the data will be lost. So, it is best to use a PV
+* Note: 
+    * The pods in a Stateful set are given an identifier, not a random hash like pods in deployment
+    * The pods are created and destroyed as in order. If pods created are 0, 1, 2 they will ber terminated in the order 2, 1, 0
+* Pods in SS have 2 endpoints. One _service_ endpoint and another DNS endpoint
 
 ## Services in Kubernetes
 * Services in Kubernetes allows communication with other k8 components
@@ -284,10 +318,26 @@ ___
 * So, to have common IP for communication for a set of pods, we create a **ClusterIP**
 * ClusterIP is an interface that is the gateway to communicate with a set of pods
 ![](img/clusterip.png)
-
 ![](img/cip-def.png)
 * Other pods can communicate using the Cluster IP _or_ the service name
+* So, how this works is, when a pod from the front-end wants to communicate with a pod from the back-end, it does so with the ClusterIP
+* The ClusterIP service forwards the request to any random pod matching the selector label
+* If a pod wants to talk to a specific pod, ClusterIP is of no use as it returns a random pod from its set of pods. So for this we use a **headless service** 
+___
+* When you create a service, an endpoint object is created by K8s to keep track of the endpoints/pods that are under that service
+    ```
+    kubectl get endpoints
+    ```
+#### Multi-Port Services
+* If a pod running multiple containers has multiple ports open, you need not create another service, rather can open multiple ports on the same service
+![](img/mps.png)
+![](img/mps-config.png)
 
+### Headless Service
+* You use a headless service when you need to communicate with a specific pod under a service
+* So, when defining the service, you set the `clusterIP` field to `None`. So, the service does not return a clusterIP but rather the IP of the pods under the service
+![](img/hs.png)
+* Headless service is generally not used as a standalone service rather used with ClusterIP service. ClusterIP service for normal loadbalancing requests and Headless service for communication between specific pod
 ### LoadBalancer
 * The `LoadBalancer` service actually leverages the native load balancer of the cloud (only supported providers like AWS, GCP, Azure ...)
 * If you are setting up a seperate server for external load balancing, the k8 `LoadBalancer` service would not have any effect. It will just act as a NodePort Service
